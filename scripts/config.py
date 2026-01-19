@@ -57,5 +57,3 @@ GROK_RESPONSE_SELECTORS = [
     'div.message-content',
 ]
 
-# Stealth browser path (for cookie extraction)
-STEALTH_BROWSER_DIR = Path.home() / ".claude" / "skills" / "stealth-browser"
