@@ -60,6 +60,7 @@ python scripts/run.py grok.py --prompt "Test" --show-browser
 | Flag | Description |
 |------|-------------|
 | `--prompt, -p` | The prompt to send to Grok (required) |
+| `--model, -m` | Model to use: `thinking` (default), `grok-2`, `grok-3` |
 | `--timeout, -t` | Response timeout in seconds (default: 60) |
 | `--thinking` | Use 120s timeout for Grok Thinking mode |
 | `--raw` | Output only response text |
@@ -67,6 +68,21 @@ python scripts/run.py grok.py --prompt "Test" --show-browser
 | `--tokens` | Show token count with truncated response |
 | `--screenshot` | Save screenshot to path |
 | `--show-browser` | Show browser window for debugging |
+
+## Model Selection
+
+```bash
+# Default: Grok 4.1 Thinking (15 queries per 20 hours on Premium)
+python scripts/run.py grok.py --prompt "Complex question" --thinking
+
+# Grok 2: Faster, no thinking overhead, different rate limits
+python scripts/run.py grok.py --prompt "Quick question" --model grok-2
+```
+
+**Rate Limits (Premium):**
+- Grok 4.1 Thinking: 15 queries per 20 hours
+- Grok 2: Higher limits
+- Premium+: Unlimited
 
 ## How It Works
 

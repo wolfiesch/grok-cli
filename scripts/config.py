@@ -57,3 +57,11 @@ GROK_RESPONSE_SELECTORS = [
     'div.message-content',
 ]
 
+# Available Grok models
+GROK_MODELS = {
+    "thinking": "Grok 4.1 Thinking",  # Default, has 15/20hr rate limit
+    "grok-2": "Grok 2",               # Faster, no thinking overhead
+    "grok-3": "Grok 3",               # If available
+}
+DEFAULT_MODEL = "thinking"
+

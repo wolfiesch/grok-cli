@@ -28,7 +28,8 @@ def estimate_tokens(text: str) -> int:
 
 from config import (
     HEADLESS, USER_DATA_DIR, BROWSER_ARGS, DEFAULT_TIMEOUT,
-    GROK_URL, GROK_INPUT_SELECTORS, GROK_SEND_SELECTORS, GROK_RESPONSE_SELECTORS
+    GROK_URL, GROK_INPUT_SELECTORS, GROK_SEND_SELECTORS, GROK_RESPONSE_SELECTORS,
+    GROK_MODELS, DEFAULT_MODEL
 )
 from chrome_cookies import extract_cookies as extract_chrome_cookies
 
@@ -39,7 +40,8 @@ async def prompt_grok(
     timeout: int = None,
     screenshot: str = None,
     show_browser: bool = False,
-    raw: bool = False
+    raw: bool = False,
+    model: str = None
 ) -> dict:
     """
     Send a prompt to Grok and get the response.
@@ -51,6 +53,7 @@ async def prompt_grok(
         screenshot: Path to save screenshot after response
         show_browser: Show browser window (overrides headless)
         raw: Return raw response without formatting
+        model: Grok model to use (thinking, grok-2, grok-3)
 
     Returns:
         dict with response text and metadata
@@ -121,7 +124,7 @@ async def prompt_grok(
             except Exception:
                 pass
 
-        # Navigate to Grok
+        # Navigate to Grok (use compose URL for fresh chat)
         page = await browser.get(GROK_URL)
         await page.sleep(3)
 
@@ -133,6 +136,61 @@ async def prompt_grok(
                 "error": "Authentication failed - redirected to login. Re-login in Chrome.",
                 "url": current_url
             }
+
+        # Try to start a new chat (dismiss any rate limit dialogs)
+        try:
+            # Look for "new chat" or compose button
+            new_chat_btn = await page.select('[aria-label="New chat"], [data-testid="newChat"]', timeout=2)
+            if new_chat_btn:
+                await new_chat_btn.click()
+                await page.sleep(1)
+        except Exception:
+            pass
+
+        # Select model if specified (and different from default)
+        selected_model = model or DEFAULT_MODEL
+        if selected_model and selected_model != "thinking":
+            try:
+                # Find and click the model selector (shows current model name)
+                # Try multiple approaches to find the dropdown
+                model_selector = None
+
+                # Method 1: Find by text content "Grok" with dropdown indicator
+                elements = await page.select_all('div, button, span')
+                for elem in elements:
+                    try:
+                        text = await elem.get_js('self => self.innerText')
+                        if text and "Grok" in text and "Thinking" in text:
+                            # Check if it's clickable (has aria-haspopup or is near a chevron)
+                            model_selector = elem
+                            break
+                    except Exception:
+                        continue
+
+                # Method 2: Find by aria attributes
+                if not model_selector:
+                    model_selector = await page.select('[aria-haspopup="listbox"], [aria-haspopup="menu"]', timeout=3)
+
+                if model_selector:
+                    await model_selector.click()
+                    await page.sleep(1.5)
+
+                    # Find and click the target model in the dropdown
+                    target_model_name = GROK_MODELS.get(selected_model, selected_model)
+                    # Look for menu items
+                    menu_items = await page.select_all('[role="menuitem"], [role="option"], [role="listitem"]')
+                    for item in menu_items:
+                        try:
+                            text = await item.get_js('self => self.innerText')
+                            if text and target_model_name.lower() in text.lower():
+                                await item.click()
+                                await page.sleep(1)
+                                break
+                        except Exception:
+                            continue
+            except Exception as e:
+                # Model selection failed, continue with default
+                pass
 
         # Find and interact with the input field
         input_element = None
@@ -180,52 +238,80 @@ async def prompt_grok(
                 # The response appears below the thinking indicator
                 page_text = await page.evaluate('document.body.innerText')
 
-                # Check if thinking is complete (has "Thought for" text)
-                if "Thought for" in page_text:
+                # Check for rate limit
+                if "reached your limit" in page_text.lower() or "limit of" in page_text:
+                    if screenshot:
+                        await page.save_screenshot(screenshot)
+                    return {
+                        "success": False,
+                        "error": "Rate limit reached. Try --model grok-2 or wait for limit reset.",
+                        "rate_limited": True,
+                        "screenshot": screenshot
+                    }
+
+                # Check if response is ready
+                # For thinking model: look for "Thought for" indicator
+                # For other models: look for response after prompt
+                is_thinking_model = (model or DEFAULT_MODEL) == "thinking"
+                has_response = "Thought for" in page_text if is_thinking_model else (prompt in page_text and len(page_text) > len(prompt) + 100)
+
+                if has_response:
                     # Find all text content in the main area
                     # Extract response - it's between user message and suggestions
                     lines = page_text.split('\n')
+
+                    # Find the start of the response
+                    response_start_idx = None
                     for i, line in enumerate(lines):
-                        if "Thought for" in line:
-                            # Response is the next non-empty line(s) after "Thought for"
-                            response_lines = []
-                            for j in range(i + 1, min(i + 20, len(lines))):
-                                next_line = lines[j].strip()
-                                # Stop at action buttons or follow-up suggestions
-                                if next_line in ['', 'Explain', 'What'] or next_line.startswith('Explain ') or next_line.startswith('What '):
-                                    break
-                                # Skip icon/button text
-                                if len(next_line) <= 2 or next_line in ['Copy', 'Share', 'Like', 'Dislike']:
-                                    continue
-                                response_lines.append(next_line)
-
-                            if response_lines:
-                                # Filter out follow-up suggestions and source citations
-                                filtered = []
-                                for line in response_lines:
-                                    words = line.split()
-                                    if not words:
-                                        continue
-                                    # Skip source citations (e.g., "code.claude.com +1", "2 web pages")
-                                    if '+' in line and any(c.isdigit() for c in line):
-                                        continue
-                                    if 'web page' in line.lower():
-                                        continue
-                                    # Skip suggestions (short phrases with action verbs)
-                                    if len(words) <= 6 and words[0] in ['Famous', 'Other', 'More', 'Tell', 'Show', 'List', 'Give', 'Explain', 'What', 'How', 'Why', 'When', 'Where', 'Who', 'Compare', 'Explore', 'Make', 'Learn']:
-                                        continue
-                                    filtered.append(line)
-
-                                candidate = '\n'.join(filtered) if filtered else response_lines[0]
-                                if candidate == last_text:
-                                    stable_count += 1
-                                    if stable_count >= 2:
-                                        response_text = candidate
-                                        break
-                                else:
-                                    stable_count = 0
-                                    last_text = candidate
+                        if is_thinking_model and "Thought for" in line:
+                            response_start_idx = i
                             break
+                        elif not is_thinking_model and prompt in line:
+                            # Response starts after the prompt
+                            response_start_idx = i
+                            break
+
+                    if response_start_idx is not None:
+                        i = response_start_idx
+                        # Response is the next non-empty line(s) after marker
+                        response_lines = []
+                        for j in range(i + 1, min(i + 20, len(lines))):
+                            next_line = lines[j].strip()
+                            # Stop at action buttons or follow-up suggestions
+                            if next_line in ['', 'Explain', 'What'] or next_line.startswith('Explain ') or next_line.startswith('What '):
+                                break
+                            # Skip icon/button text
+                            if len(next_line) <= 2 or next_line in ['Copy', 'Share', 'Like', 'Dislike']:
+                                continue
+                            response_lines.append(next_line)
+
+                        if response_lines:
+                            # Filter out follow-up suggestions and source citations
+                            filtered = []
+                            for line in response_lines:
+                                words = line.split()
+                                if not words:
+                                    continue
+                                # Skip source citations (e.g., "code.claude.com +1", "2 web pages")
+                                if '+' in line and any(c.isdigit() for c in line):
+                                    continue
+                                if 'web page' in line.lower():
+                                    continue
+                                # Skip suggestions (short phrases with action verbs)
+                                if len(words) <= 6 and words[0] in ['Famous', 'Other', 'More', 'Tell', 'Show', 'List', 'Give', 'Explain', 'What', 'How', 'Why', 'When', 'Where', 'Who', 'Compare', 'Explore', 'Make', 'Learn']:
+                                    continue
+                                filtered.append(line)
+
+                            candidate = '\n'.join(filtered) if filtered else response_lines[0]
+                            if candidate == last_text:
+                                stable_count += 1
+                                if stable_count >= 2:
+                                    response_text = candidate
+                                    break
+                            else:
+                                stable_count = 0
+                                last_text = candidate
+                        break
             except Exception:
                 pass
 
@@ -308,18 +394,26 @@ Output:
                         help="Output raw response text only (no formatting)")
     parser.add_argument("--tokens", action="store_true",
                         help="Show estimated token count for Claude Code context")
+    parser.add_argument("--model", "-m",
+                        choices=["thinking", "grok-2", "grok-3"],
+                        default="thinking",
+                        help="Grok model to use (default: thinking). Use grok-2 to avoid thinking rate limits.")
 
     args = parser.parse_args()
 
-    # Apply thinking mode timeout
-    timeout = 120 if args.thinking else args.timeout
+    # Apply thinking mode timeout (only for thinking model)
+    if args.thinking and args.model == "thinking":
+        timeout = 120
+    else:
+        timeout = args.timeout
 
     result = asyncio.run(prompt_grok(
         prompt=args.prompt,
         timeout=timeout,
         screenshot=args.screenshot,
         show_browser=args.show_browser,
-        raw=args.raw
+        raw=args.raw,
+        model=args.model
     ))
 
     if args.json:
