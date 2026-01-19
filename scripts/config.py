@@ -32,13 +32,20 @@ BROWSER_ARGS = [
     "--no-default-browser-check",
 ]
 
-# Grok UI selectors
-GROK_URL = "https://x.com/i/grok"
+# Grok URLs
+GROK_URL_XCOM = "https://x.com/i/grok"
+GROK_URL_STANDALONE = "https://grok.com"
+GROK_URL = GROK_URL_STANDALONE  # Default to standalone (different rate limits)
 
-# Input field - contenteditable div with "Ask anything" placeholder
+# Input field selectors for both grok.com and x.com/i/grok
 GROK_INPUT_SELECTORS = [
+    # grok.com standalone site
+    'textarea[aria-label="Ask Grok anything"]',
+    'textarea[aria-label*="Ask Grok"]',
+    # x.com/i/grok
     'div[data-testid="grokInput"]',
     'div[contenteditable="true"][data-placeholder="Ask anything"]',
+    'div[contenteditable="true"][data-placeholder*="What do you want"]',
     'div[role="textbox"][data-placeholder]',
     'textarea[placeholder*="Ask"]',
 ]

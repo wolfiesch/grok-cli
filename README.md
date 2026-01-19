@@ -1,14 +1,15 @@
 # Grok CLI
 
-CLI interface to query Grok AI from the command line. Uses stealth browser automation with your Chrome authentication to access Grok on X.com.
+CLI interface to query Grok AI from the command line. Uses stealth browser automation with your Chrome authentication to access Grok.
 
 ## Features
 
+- **Dual endpoints** - Supports both grok.com (default) and x.com/i/grok
 - **Stealth browser** - Uses nodriver for undetected Chrome automation
 - **Chrome auth** - Extracts cookies from your Chrome browser (including HttpOnly)
 - **Token counting** - Estimates token usage for Claude Code context budget
 - **Multiple output modes** - Raw, JSON, formatted, token-focused
-- **Thinking mode** - Extended timeout for complex queries
+- **Model selection** - Support for Grok 4.1 Thinking, Grok 2, Grok 3
 
 ## Requirements
 
@@ -36,23 +37,23 @@ git clone https://github.com/yourusername/grok-cli.git ~/.claude/skills/grok-cli
 ## Usage
 
 ```bash
-# Basic query
-python scripts/run.py grok.py --prompt "What is the capital of France?"
+# Basic query (uses grok.com, requires --show-browser for Cloudflare bypass)
+python scripts/run.py grok.py --prompt "What is the capital of France?" --show-browser
+
+# Use x.com/i/grok instead (works headless but has stricter rate limits)
+python scripts/run.py grok.py --prompt "Hello" --xcom
 
 # Raw output (for piping)
-python scripts/run.py grok.py --prompt "2+2=" --raw
+python scripts/run.py grok.py --prompt "2+2=" --raw --show-browser
 
 # JSON output
-python scripts/run.py grok.py --prompt "Hello" --json
+python scripts/run.py grok.py --prompt "Hello" --json --show-browser
 
 # Token count focus
-python scripts/run.py grok.py --prompt "Explain AI" --tokens
+python scripts/run.py grok.py --prompt "Explain AI" --tokens --show-browser
 
-# Complex queries (real-time data, trending, news)
-python scripts/run.py grok.py --prompt "What's trending on X?" --thinking
-
-# Debug with visible browser
-python scripts/run.py grok.py --prompt "Test" --show-browser
+# Complex queries with thinking model
+python scripts/run.py grok.py --prompt "What's trending on X?" --thinking --show-browser
 ```
 
 ## Options
@@ -63,11 +64,12 @@ python scripts/run.py grok.py --prompt "Test" --show-browser
 | `--model, -m` | Model to use: `thinking` (default), `grok-2`, `grok-3` |
 | `--timeout, -t` | Response timeout in seconds (default: 60) |
 | `--thinking` | Use 120s timeout for Grok Thinking mode |
+| `--xcom` | Use x.com/i/grok instead of grok.com |
 | `--raw` | Output only response text |
 | `--json` | Output full JSON with metadata |
 | `--tokens` | Show token count with truncated response |
 | `--screenshot` | Save screenshot to path |
-| `--show-browser` | Show browser window for debugging |
+| `--show-browser` | Show browser window (required for grok.com due to Cloudflare) |
 
 ## Model Selection
 
@@ -108,9 +110,11 @@ python ~/.claude/skills/grok-cli/scripts/run.py grok.py \
 ## Limitations
 
 - **macOS only** - Cookie decryption uses macOS Keychain
-- **X.com Premium required** - Grok access needed
-- **Rate limits** - Thinking mode: 15 queries per 20 hours (Premium), unlimited with Premium+
-- **Model switching blocked when rate limited** - The rate limit dialog blocks UI, can't switch models
+- **X.com Premium required** - Grok access needed for x.com/i/grok
+- **Cloudflare on grok.com** - Headless mode triggers Cloudflare challenge; use `--show-browser`
+- **Rate limits (x.com)** - Thinking mode: 15 queries per 20 hours (Premium), unlimited with Premium+
+- **Capacity limits (grok.com)** - Guest access may hit "heavy usage" limits; sign in for priority
+- **Model switching blocked when rate limited** - The rate limit dialog blocks UI on x.com
 - **No conversation history** - Each prompt is a fresh session
 
 ## License
