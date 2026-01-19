@@ -65,11 +65,25 @@ python scripts/run.py grok.py --prompt "What's trending on X?" --thinking --show
 | `--timeout, -t` | Response timeout in seconds (default: 60) |
 | `--thinking` | Use 120s timeout for Grok Thinking mode |
 | `--xcom` | Use x.com/i/grok instead of grok.com |
+| `--session-id` | Unique ID for concurrent queries (uses separate browser profile) |
 | `--raw` | Output only response text |
 | `--json` | Output full JSON with metadata |
 | `--tokens` | Show token count with truncated response |
 | `--screenshot` | Save screenshot to path |
 | `--show-browser` | Show browser window (required for grok.com due to Cloudflare) |
+
+## Concurrent Queries
+
+Run multiple queries in parallel using `--session-id`:
+
+```bash
+# Each session-id gets its own browser profile
+python scripts/run.py grok.py --prompt "Query 1" --show-browser --session-id a &
+python scripts/run.py grok.py --prompt "Query 2" --show-browser --session-id b &
+wait
+```
+
+Without `--session-id`, queries must run sequentially (shared browser profile).
 
 ## Model Selection
 

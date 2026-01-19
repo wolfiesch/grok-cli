@@ -61,6 +61,11 @@ python scripts/run.py grok.py --prompt "One word answer: 2+2=" --raw --show-brow
 
 # Use different model (grok-2 has higher rate limits)
 python scripts/run.py grok.py --prompt "Hello" --model grok-2 --show-browser
+
+# Run multiple queries in parallel
+python scripts/run.py grok.py --prompt "Query 1" --show-browser --session-id a &
+python scripts/run.py grok.py --prompt "Query 2" --show-browser --session-id b &
+wait
 ```
 
 ### Piping to Other Tools
