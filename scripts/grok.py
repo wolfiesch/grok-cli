@@ -151,43 +151,45 @@ async def prompt_grok(
         selected_model = model or DEFAULT_MODEL
         if selected_model and selected_model != "thinking":
             try:
-                # Find and click the model selector (shows current model name)
-                # Try multiple approaches to find the dropdown
-                model_selector = None
+                # The model selector is in the header area, shows "Grok X.X Thinking" with dropdown
+                # Use JavaScript to find and click it more precisely
+                clicked = await page.evaluate('''() => {
+                    // Find the model selector in the header (contains "Grok" and has a chevron/arrow)
+                    const header = document.querySelector('header') || document.body;
+                    const elements = header.querySelectorAll('div, button, span');
+                    for (const el of elements) {
+                        const text = el.innerText || '';
+                        // Look for "Grok" + version number pattern in header area
+                        if (text.match(/Grok\\s+[0-9]/) && text.includes('Thinking')) {
+                            // Make sure it's the clickable dropdown, not a child element
+                            if (el.closest('[aria-haspopup]') || el.querySelector('svg') || text.length < 30) {
+                                el.click();
+                                return true;
+                            }
+                        }
+                    }
+                    return false;
+                }''')
 
-                # Method 1: Find by text content "Grok" with dropdown indicator
-                elements = await page.select_all('div, button, span')
-                for elem in elements:
-                    try:
-                        text = await elem.get_js('self => self.innerText')
-                        if text and "Grok" in text and "Thinking" in text:
-                            # Check if it's clickable (has aria-haspopup or is near a chevron)
-                            model_selector = elem
-                            break
-                    except Exception:
-                        continue
-
-                # Method 2: Find by aria attributes
-                if not model_selector:
-                    model_selector = await page.select('[aria-haspopup="listbox"], [aria-haspopup="menu"]', timeout=3)
-
-                if model_selector:
-                    await model_selector.click()
+                if clicked:
                     await page.sleep(1.5)
 
                     # Find and click the target model in the dropdown
                     target_model_name = GROK_MODELS.get(selected_model, selected_model)
-                    # Look for menu items
-                    menu_items = await page.select_all('[role="menuitem"], [role="option"], [role="listitem"]')
-                    for item in menu_items:
-                        try:
-                            text = await item.get_js('self => self.innerText')
-                            if text and target_model_name.lower() in text.lower():
-                                await item.click()
-                                await page.sleep(1)
-                                break
-                        except Exception:
-                            continue
+
+                    # Use JavaScript to find and click the menu option
+                    await page.evaluate(f'''(targetModel) => {{
+                        const items = document.querySelectorAll('[role="menuitem"], [role="option"], [role="menuitemradio"]');
+                        for (const item of items) {{
+                            if (item.innerText.toLowerCase().includes(targetModel.toLowerCase())) {{
+                                item.click();
+                                return true;
+                            }}
+                        }}
+                        return false;
+                    }}''', target_model_name)
+                    await page.sleep(1)
+
             except Exception as e:
                 # Model selection failed, continue with default
                 pass
@@ -244,8 +246,9 @@ async def prompt_grok(
                         await page.save_screenshot(screenshot)
                     return {
                         "success": False,
-                        "error": "Rate limit reached. Try --model grok-2 or wait for limit reset.",
+                        "error": "Rate limit reached (15 Thinking queries/20hrs). Wait for reset or upgrade to Premium+.",
                         "rate_limited": True,
+                        "hint": "Model switching unavailable while rate limited - the dialog blocks UI interaction.",
                         "screenshot": screenshot
                     }
 

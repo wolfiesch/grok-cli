@@ -109,7 +109,8 @@ python ~/.claude/skills/grok-cli/scripts/run.py grok.py \
 
 - **macOS only** - Cookie decryption uses macOS Keychain
 - **X.com Premium required** - Grok access needed
-- **Rate limits** - Subject to X.com's rate limiting
+- **Rate limits** - Thinking mode: 15 queries per 20 hours (Premium), unlimited with Premium+
+- **Model switching blocked when rate limited** - The rate limit dialog blocks UI, can't switch models
 - **No conversation history** - Each prompt is a fresh session
 
 ## License
