@@ -1,0 +1,18 @@
+# Virtual environment
+.venv/
+venv/
+
+# Runtime data
+data/
+logs/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Environment
+.env
+
+# OS
+.DS_Store
