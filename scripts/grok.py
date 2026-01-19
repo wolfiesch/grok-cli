@@ -179,7 +179,8 @@ async def prompt_grok(
     show_browser: bool = False,
     raw: bool = False,
     model: str = None,
-    use_xcom: bool = False
+    use_xcom: bool = False,
+    session_id: str = None
 ) -> dict:
     """
     Send a prompt to Grok and get the response.
@@ -226,10 +227,17 @@ async def prompt_grok(
                 "error": "No X.com cookies found. Make sure you're logged into X.com in Chrome."
             }
 
+        # Determine browser profile directory (unique per session for concurrency)
+        if session_id:
+            browser_profile = USER_DATA_DIR.parent / f"browser_profile_{session_id}"
+            browser_profile.mkdir(exist_ok=True)
+        else:
+            browser_profile = USER_DATA_DIR
+
         # Start stealth browser
         browser = await uc.start(
             headless=headless,
-            user_data_dir=str(USER_DATA_DIR),
+            user_data_dir=str(browser_profile),
             browser_args=BROWSER_ARGS
         )
 
@@ -810,6 +818,8 @@ Output:
                         help="Grok model to use (default: thinking). Use grok-2 to avoid thinking rate limits.")
     parser.add_argument("--xcom", action="store_true",
                         help="Use x.com/i/grok instead of standalone grok.com")
+    parser.add_argument("--session-id",
+                        help="Unique session ID for concurrent queries (uses separate browser profile)")
 
     args = parser.parse_args()
 
@@ -826,7 +836,8 @@ Output:
         show_browser=args.show_browser,
         raw=args.raw,
         model=args.model,
-        use_xcom=args.xcom
+        use_xcom=args.xcom,
+        session_id=args.session_id
     ))
 
     if args.json:
