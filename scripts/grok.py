@@ -206,8 +206,13 @@ async def prompt_grok(
     browser = None
 
     try:
-        # Extract cookies from Chrome
-        result = extract_chrome_cookies(["x.com", "twitter.com"], decrypt=True)
+        # Extract cookies from Chrome - include grok.com and x.ai domains for standalone
+        domains_to_extract = ["x.com", "twitter.com"]
+        if not use_xcom:
+            # Add grok.com and x.ai domains for standalone grok.com
+            domains_to_extract.extend(["grok.com", "x.ai", "accounts.x.ai"])
+
+        result = extract_chrome_cookies(domains_to_extract, decrypt=True)
         if not result.get("success"):
             return {
                 "success": False,
@@ -233,12 +238,13 @@ async def prompt_grok(
         using_standalone = "grok.com" in grok_url
 
         if using_standalone:
-            # For grok.com: First set X.com cookies on x.com domain (needed for OAuth)
+            # For grok.com: First inject all relevant cookies
+            injected = 0
+
+            # Navigate to x.com first to set X.com cookies
             page = await browser.get("https://x.com")
             await page.sleep(1)
 
-            # Inject X.com cookies
-            injected = 0
             for c in cookies:
                 if not c.get("value"):
                     continue
@@ -263,7 +269,35 @@ async def prompt_grok(
                 except Exception:
                     pass
 
-            # Now navigate to grok.com
+            # Navigate to grok.com to set grok.com/x.ai cookies
+            page = await browser.get("https://grok.com")
+            await page.sleep(1)
+
+            for c in cookies:
+                if not c.get("value"):
+                    continue
+                cookie_domain = c.get("domain", "").lstrip(".")
+                if not any(d in cookie_domain for d in ["grok.com", "x.ai"]):
+                    continue
+                try:
+                    same_site = None
+                    if c.get("same_site") in ["Strict", "Lax", "None"]:
+                        same_site = cdp.network.CookieSameSite(c["same_site"])
+                    param = cdp.network.CookieParam(
+                        name=c["name"],
+                        value=c["value"],
+                        domain=c.get("domain"),
+                        path=c.get("path", "/"),
+                        secure=c.get("secure", False),
+                        http_only=c.get("http_only", False),
+                        same_site=same_site,
+                    )
+                    await browser.connection.send(cdp.storage.set_cookies([param]))
+                    injected += 1
+                except Exception:
+                    pass
+
+            # Reload grok.com with cookies set
             page = await browser.get(grok_url)
             await page.sleep(3)
 
